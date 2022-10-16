@@ -15,11 +15,15 @@ fi
 
 SOCKS_SERVER=127.0.0.1
 SOCKS_PORT=1080
-GATEWAY_IP=$(ip route | grep default | awk '{print $3}')
+# GATEWAY_IP=$(ip route | grep default | awk '{print $3}' | head -n 1)
+GATEWAY_IP=192.168.1.1
 TUN_NETWORK_DEV=tun1
 TUN_NETWORK_PREFIX3=192.168.100
+CN_RULES_FILE="/etc/tunnel/cn_rules.conf"
 
-start_route() {
+start_tunnel() {
+    # set -x
+
     # netif
     ip tuntap del dev ${TUN_NETWORK_DEV} mode tun
     ip tuntap add dev ${TUN_NETWORK_DEV} mode tun
@@ -30,7 +34,7 @@ start_route() {
     ip route add $SOCKS_SERVER via $GATEWAY_IP
 
     # cn rules
-    for i in $(cat cn_rules.conf)
+    for i in $(cat ${CN_RULES_FILE})
     do
     ip route add $i via $GATEWAY_IP
     done
@@ -40,15 +44,18 @@ start_route() {
     ip route add 0.0.0.0/1 via ${TUN_NETWORK_PREFIX3}.1
     ip route add 128.0.0.0/1 via ${TUN_NETWORK_PREFIX3}.1
   
-    badvpn-tun2socks --tundev "$TUN_NETWORK_DEV" --netif-ipaddr "${TUN_NETWORK_PREFIX3}.2" --netif-netmask 255.255.255.0 --socks-server-addr "127.0.0.1:$SOCKS_PORT"
+    echo "route start !"
+    echo "start tun2socks !"
+    trap stop_tunnel INT TERM
+    badvpn-tun2socks --tundev "$TUN_NETWORK_DEV" --netif-ipaddr "${TUN_NETWORK_PREFIX3}.2" --netif-netmask 255.255.255.0 --socks-server-addr "${SOCKS_SERVER}:${SOCKS_PORT}"
     TUN2SOCKS_PID="$!"
 
-    echo "route start !"
+    wait $TUN2SOCKS_PID
 }
 
-stop_route() {
+stop_tunnel() {
     # cancel cn rules
-    for i in $(cat cn_rules.conf)
+    for i in $(cat ${CN_RULES_FILE})
     do
     ip route del $i via $GATEWAY_IP
     done
@@ -71,6 +78,7 @@ stop_route() {
 
 case $op in 
     show)
+        set +x
         echo "envs:"
         echo "socks server: ${SOCKS_SERVER}:${SOCKS_PORT}"
         echo "gw: ${GATEWAY_IP}"
@@ -80,10 +88,18 @@ case $op in
         curl ip.bi
         ;;
     start)
-        start_route
+        start_tunnel
         ;;
     stop)
-        stop_route
+        stop_tunnel
+        ;;
+    reload)
+        stop_tunnel
+        start_tunnel
+        ;;
+    restart)
+        stop_tunnel
+        start_tunnel
         ;;
     *)
         echo "wrong params"

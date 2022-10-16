@@ -1,0 +1,13 @@
+[Unit]
+Description=Transparent socks forwarding
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tunnel start
+ExecStop=/usr/local/bin/tunnel stop
+ExecReload=/usr/local/bin/tunnel reload
+LimitNOFILE=104857600
+
+[Install]
+WantedBy=multi-user.target
